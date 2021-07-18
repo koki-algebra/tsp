@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
+#include "tspsolve.h"
 
 // 座標(x_i, y_i)と(x_j, y_j)のユークリッド距離を返す関数
 int d(int x_i, int y_i, int x_j, int y_j) {
@@ -35,8 +37,114 @@ int simple_path(int n, int cost_matrix[n][n]) {
   return cost;
 }
 
+// ランダム探索
+// ランダムの巡回路を返す関数
+int* gen_random_path(int n) {
+  int* path = NULL;
+  path = (int*)malloc(sizeof(int) * n);
+  if (path == NULL) {
+    printf("error: Failed to create the array.\n");
+    exit(1);
+  }
+
+  int rnd;
+  int flag;
+
+  // pathをランダム生成
+  for (int i = 0; i < n; i++) {
+    do {
+      flag = 0;  // フラグ初期化
+      rnd = (int)floor(genrand() * 51);  // 乱数生成
+      // 乱数に重複がないか確認
+      for (int j = 0; j < i; j++) {
+        // 重複が見つかった場合
+        if (path[j] == rnd) {
+          // フラグを立てて乱数を再生成
+          flag = 1;
+          break;
+        }
+      }
+    } while(flag);
+    // 乱数を格納
+    path[i] = rnd;
+  }
+
+  return path;
+}
+
+// パスからコストを計算する関数
+int calc_ransearch_cost(int n, int* path, int cost_matrix[n][n]) {
+  int cost = 0;  // コスト
+
+  // コストを計算
+  for (int i = 0; i < n; i++) {
+    if (i == n - 1) {  // 最後の都市から開始の都市に
+      cost += cost_matrix[path[i]][path[0]];
+    } else {
+      cost += cost_matrix[path[i]][path[i + 1]];
+    }
+  }
+
+  return cost;
+}
+
+void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
+  // 試行回数入力
+  int m;
+  printf("ランダム探索試行回数: ");
+  scanf("%d", &m);
+
+  int cost[m];  // コスト
+  int* path = NULL;
+  int paths[m][n];
+  char filename[30];  // pathを書き込むファイル名
+  FILE *fp;  // ファイルポインタ
+  int ans;  // 暫定解のコスト
+  int interval = 100;
+
+  // 乱数シード初期化
+  sgenrand((unsigned)time(NULL));
+  for (int i = 0; i < m; i++) {
+    // パス生成
+    path = gen_random_path(n);
+    for (int j = 0; j < n; j++) {
+      paths[i][j] = path[j];
+    }
+    // コスト計算
+    cost[i] = calc_ransearch_cost(n, path, cost_matrix);
+    free(path);
+  }
+
+  // ファイルへの書き込み
+  for (int i = 0; i < m; i++) {
+    // 初回以降は100の倍数回目に書き込む
+    if (i == 0 || (i + 1) % interval == 0 ) {
+      // ファイルへの書き込み
+      sprintf(filename, "random-%d.dat", i+1);
+      fp = fopen(filename, "w");
+      if (fp == NULL) {
+        printf("error: Failed to open file!\n");
+        exit(1);
+      }
+      for (int j = 0; j <= n; j++) {
+        if (j != n) {
+          int x = coordinate[paths[i][j]][0];
+          int y = coordinate[paths[i][j]][1];
+          fprintf(fp, "%d %d\n", x, y);
+        } else {  // 最後に開始都市を書き込む
+          int x0 = coordinate[paths[i][0]][0];
+          int y0 = coordinate[paths[i][0]][1];
+          fprintf(fp, "%d %d\n", x0, y0);
+        }
+      }
+      fclose(fp);
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
   int n;          // 都市数
+  int m;          // 試行回数
   FILE *fp;       // ファイルポインター
   char temp[100];
 
@@ -102,10 +210,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  print_cost(n, cost_matrix);
-
-  int cost = simple_path(n, cost_matrix);
-  printf("cost = %d\n", cost);
+  // ランダム探索
+  random_search(n, coordinate, cost_matrix);
 
   // 最後にファイルを閉じる
   fclose(fp);
