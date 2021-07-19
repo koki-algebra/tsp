@@ -199,6 +199,27 @@ int* gen_neighborhood(int* path, int n, int i, int j) {
   return new_path;
 }
 
+int* gen_2opt_nb(int* path, int n, int i, int j) {
+  // メモリ確保
+  int* new_path = (int*)malloc(sizeof(int) * n);
+  if (path == NULL) {
+    printf("error: Failed to create the array.\n");
+    exit(1);
+  }
+
+  // 配列のコピー
+  for (int k = 0; k < n; k++) {
+    new_path[k] = path[k];
+  }
+
+  // 新しいpathを生成
+  for (int k = i; k <= j; k++) {
+    new_path[k] = path[n - k + i];
+  }
+
+  return new_path;
+}
+
 void hill_climbing(int n, int cost_matrix[n][n]) {
   int type;  // 0: ランダム交換, 1: 2-opt近傍
   int end_flag = 0;  // 終了フラグ
@@ -213,13 +234,13 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
   printf("0: random exchange, 1: 2-opt neighbourhood\n");
   scanf("%d", &type);
 
-  // Step1: 初期回を生成する
+  // 初期回を生成する
   sgenrand((unsigned)time(NULL));
   path = gen_random_path(n);
   cost = calc_cost(n, path, cost_matrix);
 
   if (type == 0) {  // ランダム交換
-    // Step2: 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
+    // 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
     while (1) {
       find_flag = 0;
       // 近傍解を探索する
@@ -253,13 +274,39 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
         break;
       }
     }
-    // Step3: Step2で入れ替えが起こらなければ終了
   } else {  // 2-opt近傍
     while (1) {
-      break;
+      find_flag = 0;
+      // 近傍を探索する
+      for (int i = 0; i < n; i++) {
+        if (find_flag) {
+          break;
+        }
+        for (int j = i + 1; j < n; j++) {
+          nb_path = gen_2opt_nb(path, n, i, j);
+          nb_cost = calc_cost(n, nb_path, cost_matrix);
+          // より良い解が見つかったら入れ替える
+          if (cost > nb_cost) {
+            // コストを更新
+            cost = nb_cost;
+            // 暫定解を更新
+            path = gen_2opt_nb(path, n, i, j);
+            find_flag = 1;  // 発見フラグを立てる
+            break;
+          }
+        }
+        if (i == n - 1 && find_flag == 0) {  // 最後まで入れ替えが起こらなかったら終了フラグを立てる
+          end_flag = 1;
+        }
+      }
+      // 入れ替えが起こらなかった場合ループを抜けて終了
+      if (end_flag) {
+        break;
+      }
     }
   }
-  printf("cost = %d\n", cost);
+  // 結果
+  printf("result: cost = %d\n", cost);
   // メモリ開放
   free(path);
 }
@@ -269,7 +316,7 @@ int main(int argc, char *argv[]) {
   int m;          // 試行回数
   FILE *fp;       // ファイルポインター
   char temp[100];
-  int type;
+  int type = 1;
 
   // 引数の過不足に対するエラー処理
   if (argc != 3) {
@@ -284,9 +331,11 @@ int main(int argc, char *argv[]) {
   }
 
   // 第3引数で探索法を決める
-  if (strcmp(argv[2], "r")) {
+  if (strcmp(argv[2], "r") == 0) {
+    printf("random search start!\n");
     type = 0;
-  } else if (strcmp(argv[2], "hc")) {
+  } else if (strcmp(argv[2], "hc") == 0) {
+    printf("hill climbing start!\n");
     type = 1;
   }
 
