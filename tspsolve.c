@@ -99,8 +99,10 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   int paths[m][n];
   char filename[30];  // pathを書き込むファイル名
   FILE *fp;  // ファイルポインタ
+  int interval = 300;
   int ans;  // 暫定解のコスト
-  int interval = 100;
+  int ans_index = 0;   // 暫定解のindex
+  int ans_indexes[m];  // 暫定解のindexの推移を格納する配列
 
   // 乱数シード初期化
   sgenrand((unsigned)time(NULL));
@@ -115,12 +117,36 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
     free(path);
   }
 
-  // ファイルへの書き込み
+  // 暫定解が変化したタイミングi(0 <= i <= m)を配列に保存
+  ans = cost[0];  // 暫定解初期化
+  for (int i = 0; i < m; i++) {
+    ans_indexes[i] = ans_index;
+    if (ans > cost[i]) {
+      ans = cost[i];
+      ans_index = i;
+    }
+  }
+
+  // ファイルへの書き込み(cost)
+  sprintf(filename, "./cost/random-cost-%d.dat", m);
+  fp = fopen(filename, "w");
+  if (fp == NULL) {
+    printf("error: Failed to open file!\n");
+    exit(1);
+  }
+  for (int i = 0; i < m; i++) {
+    if (i == 0 || (i + 1) % 10 == 0) {
+      fprintf(fp, "%d %d\n", i + 1, cost[ans_indexes[i]]);
+    }
+  }
+  fclose(fp);
+
+  // ファイルへの書き込み(path)
   for (int i = 0; i < m; i++) {
     // 初回以降は100の倍数回目に書き込む
-    if (i == 0 || (i + 1) % interval == 0 ) {
+    if (i == 0 || (i + 1) % interval == 0) {
       // ファイルへの書き込み
-      sprintf(filename, "random-%d.dat", i+1);
+      sprintf(filename, "./path/random-%d.dat", i+1);
       fp = fopen(filename, "w");
       if (fp == NULL) {
         printf("error: Failed to open file!\n");
@@ -128,12 +154,12 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
       }
       for (int j = 0; j <= n; j++) {
         if (j != n) {
-          int x = coordinate[paths[i][j]][0];
-          int y = coordinate[paths[i][j]][1];
+          int x = coordinate[paths[ans_indexes[i]][j]][0];
+          int y = coordinate[paths[ans_indexes[i]][j]][1];
           fprintf(fp, "%d %d\n", x, y);
         } else {  // 最後に開始都市を書き込む
-          int x0 = coordinate[paths[i][0]][0];
-          int y0 = coordinate[paths[i][0]][1];
+          int x0 = coordinate[paths[ans_indexes[i]][0]][0];
+          int y0 = coordinate[paths[ans_indexes[i]][0]][1];
           fprintf(fp, "%d %d\n", x0, y0);
         }
       }

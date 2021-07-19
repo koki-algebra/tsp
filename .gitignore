@@ -2,3 +2,5 @@
 *.ps
 *.o
 .vscode
+cost
+path
