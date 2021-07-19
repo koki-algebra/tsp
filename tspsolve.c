@@ -25,6 +25,15 @@ void print_cost(int n, int cost_matrix[n][n]) {
   }
 }
 
+// pathの出力
+void print_path(int n, int* path) {
+  printf("[ ");
+  for (int i = 0; i < n; i++) {
+    printf("%d ", path[i]);
+  }
+  printf("]\n");
+}
+
 // 単純巡回路のコスト計算
 int simple_path(int n, int cost_matrix[n][n]) {
   int cost = 0;
@@ -37,7 +46,6 @@ int simple_path(int n, int cost_matrix[n][n]) {
   return cost;
 }
 
-// ランダム探索
 // ランダムの巡回路を返す関数
 int* gen_random_path(int n) {
   int* path = NULL;
@@ -73,7 +81,7 @@ int* gen_random_path(int n) {
 }
 
 // パスからコストを計算する関数
-int calc_ransearch_cost(int n, int* path, int cost_matrix[n][n]) {
+int calc_cost(int n, int* path, int cost_matrix[n][n]) {
   int cost = 0;  // コスト
 
   // コストを計算
@@ -88,6 +96,7 @@ int calc_ransearch_cost(int n, int* path, int cost_matrix[n][n]) {
   return cost;
 }
 
+// ランダム探索を実行する関数
 void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   // 試行回数入力
   int m;
@@ -97,7 +106,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   int cost[m];  // コスト
   int* path = NULL;
   int paths[m][n];
-  char filename[30];  // pathを書き込むファイル名
+  char filename[32];  // pathを書き込むファイル名
   FILE *fp;  // ファイルポインタ
   int interval = 300;
   int ans;  // 暫定解のコスト
@@ -113,7 +122,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
       paths[i][j] = path[j];
     }
     // コスト計算
-    cost[i] = calc_ransearch_cost(n, path, cost_matrix);
+    cost[i] = calc_cost(n, path, cost_matrix);
     free(path);
   }
 
@@ -128,7 +137,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   }
 
   // ファイルへの書き込み(cost)
-  sprintf(filename, "./cost/random-cost-%d.dat", m);
+  sprintf(filename, "./cost/random/random-cost-%d.dat", m);
   fp = fopen(filename, "w");
   if (fp == NULL) {
     printf("error: Failed to open file!\n");
@@ -146,7 +155,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
     // 初回以降は100の倍数回目に書き込む
     if (i == 0 || (i + 1) % interval == 0) {
       // ファイルへの書き込み
-      sprintf(filename, "./path/random-%d.dat", i+1);
+      sprintf(filename, "./path/random/random-%d.dat", i+1);
       fp = fopen(filename, "w");
       if (fp == NULL) {
         printf("error: Failed to open file!\n");
@@ -168,14 +177,102 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   }
 }
 
+/*  山登り法  */
+// pathを引数に取り, path[i]とpath[j]を入れ替えた新しいnew_pathを返す関数
+int* gen_neighborhood(int* path, int n, int i, int j) {
+  // メモリ確保
+  int* new_path = (int*)malloc(sizeof(int) * n);
+  if (path == NULL) {
+    printf("error: Failed to create the array.\n");
+    exit(1);
+  }
+
+  // 配列のコピー
+  for (int k = 0; k < n; k++) {
+    new_path[k] = path[k];
+  }
+
+  // i番目とj番目を入れ替え
+  new_path[i] = path[j];
+  new_path[j] = path[i];
+
+  return new_path;
+}
+
+void hill_climbing(int n, int cost_matrix[n][n]) {
+  int type;  // 0: ランダム交換, 1: 2-opt近傍
+  int end_flag = 0;  // 終了フラグ
+  int find_flag = 0;
+  int* path = NULL;
+  int* nb_path = NULL;
+  int nb_paths[n][n];  // 近傍解
+  int cost;  // コスト
+  int nb_cost;  // 近傍解のコスト
+
+  printf("input '0' or '1'\n");
+  printf("0: random exchange, 1: 2-opt neighbourhood\n");
+  scanf("%d", &type);
+
+  // Step1: 初期回を生成する
+  sgenrand((unsigned)time(NULL));
+  path = gen_random_path(n);
+  cost = calc_cost(n, path, cost_matrix);
+
+  if (type == 0) {  // ランダム交換
+    // Step2: 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
+    while (1) {
+      find_flag = 0;
+      // 近傍解を探索する
+      for (int i = 0; i < n; i++) {
+        if (find_flag) {
+          break;
+        }
+        for (int j = 0; j < n; j++) {
+          if (i != j) {
+            nb_path = gen_neighborhood(path, n, i, j);
+            nb_cost = calc_cost(n, nb_path, cost_matrix);
+            // より良い解が見つかったら入れ替える
+            if (cost > nb_cost) {
+              // コストを更新
+              cost = nb_cost;
+              // 暫定解を更新
+              int tmp = path[i];
+              path[i] = path[j];
+              path[j] = tmp;
+              find_flag = 1;  // 発見フラグを立てる
+              break;
+            }
+          }
+        }
+        if (i == n - 1 && find_flag == 0) {  // 最後まで入れ替えが起こらなかったら終了フラグを立てる
+          end_flag = 1;
+        }
+      }
+      // 入れ替えが起こらなかった場合ループを抜けて終了
+      if (end_flag) {
+        break;
+      }
+    }
+    // Step3: Step2で入れ替えが起こらなければ終了
+  } else {  // 2-opt近傍
+    while (1) {
+      break;
+    }
+  }
+  printf("cost = %d\n", cost);
+  // メモリ開放
+  free(path);
+}
+
 int main(int argc, char *argv[]) {
   int n;          // 都市数
   int m;          // 試行回数
   FILE *fp;       // ファイルポインター
   char temp[100];
+  int type;
 
   // 引数の過不足に対するエラー処理
-  if (argc != 2) {
+  if (argc != 3) {
     printf("Usage: sample <input_filename>\n");
     exit(1);
   }
@@ -184,6 +281,13 @@ int main(int argc, char *argv[]) {
   if ((fp = fopen(argv[1], "r")) == NULL) {
     printf("file open error!\n");
     exit(1);
+  }
+
+  // 第3引数で探索法を決める
+  if (strcmp(argv[2], "r")) {
+    type = 0;
+  } else if (strcmp(argv[2], "hc")) {
+    type = 1;
   }
 
   /* 次元(都市数)の取得 */
@@ -236,9 +340,17 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // ランダム探索
-  random_search(n, coordinate, cost_matrix);
+  if (type == 0) {
+    // ランダム探索
+    random_search(n, coordinate, cost_matrix);
+  } else if (type == 1) {
+    // 山登り法
+    hill_climbing(n, cost_matrix);
+  } else {
+    printf("error: invalid argument!\n");
+  }
 
   // 最後にファイルを閉じる
   fclose(fp);
+  return 0;
 }
