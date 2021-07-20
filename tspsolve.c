@@ -214,42 +214,80 @@ int* gen_2opt_nb(int* path, int n, int i, int j) {
 
   // 新しいpathを生成
   for (int k = i; k <= j; k++) {
-    new_path[k] = path[n - k + i];
+    new_path[k] = path[j - k + i];
   }
 
   return new_path;
 }
 
 void hill_climbing(int n, int cost_matrix[n][n]) {
-  int type;  // 0: ランダム交換, 1: 2-opt近傍
+  int nb_type;  // 0: ランダム交換, 1: 2-opt近傍
+  int algo_type;  // 0: 通常, 1: 変種
   int end_flag = 0;  // 終了フラグ
   int find_flag = 0;
   int* path = NULL;
   int* nb_path = NULL;
-  int nb_paths[n][n];  // 近傍解
-  int cost;  // コスト
+  // int nb_paths[n*(n-1)/2][n];
+  int cost;  // 暫定解コスト
   int nb_cost;  // 近傍解のコスト
+  // int nb_costs[n*(n-1)/2];
+  int ans_index[2];
 
+  // ランダム交換 or 2opt-近傍
   printf("input '0' or '1'\n");
   printf("0: random exchange, 1: 2-opt neighbourhood\n");
-  scanf("%d", &type);
+  scanf("%d", &nb_type);
+
+  // 通常 or 変種
+  printf("input '0' or '1'\n");
+  printf("0: normal, 1: variant");
+  scanf("%d", &algo_type);
 
   // 初期回を生成する
   sgenrand((unsigned)time(NULL));
   path = gen_random_path(n);
   cost = calc_cost(n, path, cost_matrix);
 
-  if (type == 0) {  // ランダム交換
-    // 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
-    while (1) {
-      find_flag = 0;
-      // 近傍解を探索する
-      for (int i = 0; i < n; i++) {
-        if (find_flag) {
+
+  if (nb_type == 0) {  // ランダム交換
+    if (algo_type == 0) {  // 通常
+      while (1) {
+        find_flag = 0;
+        // 現在の解の近傍の中から，最も良い解を選び近傍解とする
+        for (int i = 0; i < n - 1; i++) {
+          for (int j = i + 1; j < n; j++) {
+            nb_path = gen_neighborhood(path, n, i, j);
+            nb_cost = calc_cost(n, nb_path, cost_matrix);
+            if (cost > nb_cost) {
+              // コスト更新
+              cost = nb_cost;
+              ans_index[0] = i;  // path[i]と
+              ans_index[1] = j;  // path[j]を入れ替えた時が暫定解
+              find_flag = 1;  // 発見フラグを立てる
+            }
+          }
+          // 入れ替えが起こらなければ終了フラグを立てる
+          if (i == n - 2 && find_flag == 0) {
+            end_flag = 1;
+          }
+        }
+        // 終了フラグが立っていればループを抜けて終了
+        if (end_flag) {
           break;
         }
-        for (int j = 0; j < n; j++) {
-          if (i != j) {
+        // 暫定解更新
+        path = gen_neighborhood(path, n, ans_index[0], ans_index[1]);
+      }
+    } else {  // 変種
+      // 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
+      while (1) {
+        find_flag = 0;
+        // 近傍解を探索する
+        for (int i = 0; i < n - 1; i++) {
+          if (find_flag) {
+            break;
+          }
+          for (int j = i + 1; j < n - 1; j++) {
             nb_path = gen_neighborhood(path, n, i, j);
             nb_cost = calc_cost(n, nb_path, cost_matrix);
             // より良い解が見つかったら入れ替える
@@ -264,48 +302,78 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
               break;
             }
           }
+          if (i == n - 2 && find_flag == 0) {  // 最後まで入れ替えが起こらなかったら終了フラグを立てる
+            end_flag = 1;
+          }
         }
-        if (i == n - 1 && find_flag == 0) {  // 最後まで入れ替えが起こらなかったら終了フラグを立てる
-          end_flag = 1;
+        // 入れ替えが起こらなかった場合ループを抜けて終了
+        if (end_flag) {
+          break;
         }
-      }
-      // 入れ替えが起こらなかった場合ループを抜けて終了
-      if (end_flag) {
-        break;
       }
     }
   } else {  // 2-opt近傍
-    while (1) {
-      find_flag = 0;
-      // 近傍を探索する
-      for (int i = 0; i < n; i++) {
-        if (find_flag) {
-          break;
-        }
-        for (int j = i + 1; j < n; j++) {
-          nb_path = gen_2opt_nb(path, n, i, j);
-          nb_cost = calc_cost(n, nb_path, cost_matrix);
-          // より良い解が見つかったら入れ替える
-          if (cost > nb_cost) {
-            // コストを更新
-            cost = nb_cost;
-            // 暫定解を更新
-            path = gen_2opt_nb(path, n, i, j);
-            find_flag = 1;  // 発見フラグを立てる
-            break;
+    if (algo_type == 0) {  // 通常
+      while (1) {
+        find_flag = 0;
+        // 現在の解の近傍の中から，最も良い解を選び近傍解とする
+        for (int i = 0; i < n - 1; i++) {
+          for (int j = i + 1; j < n; j++) {
+            nb_path = gen_2opt_nb(path, n, i, j);
+            nb_cost = calc_cost(n, nb_path, cost_matrix);
+            if (cost > nb_cost) {
+              // コスト更新
+              cost = nb_cost;
+              ans_index[0] = i;
+              ans_index[1] = j;
+              find_flag = 1;  // 発見フラグを立てる
+            }
+          }
+          // 入れ替えが起こらなければ終了フラグを立てる
+          if (i == n - 2 && find_flag == 0) {
+            end_flag = 1;
           }
         }
-        if (i == n - 1 && find_flag == 0) {  // 最後まで入れ替えが起こらなかったら終了フラグを立てる
-          end_flag = 1;
+        // 終了フラグが立っていればループを抜けて終了
+        if (end_flag) {
+          break;
         }
+        path = gen_2opt_nb(path, n, ans_index[0], ans_index[1]);
       }
-      // 入れ替えが起こらなかった場合ループを抜けて終了
-      if (end_flag) {
-        break;
+    } else {  // 変種
+      while (1) {
+        find_flag = 0;
+        // 近傍を探索する
+        for (int i = 0; i < n - 1; i++) {
+          if (find_flag) {
+            break;
+          }
+          for (int j = i + 1; j < n; j++) {
+            nb_path = gen_2opt_nb(path, n, i, j);
+            nb_cost = calc_cost(n, nb_path, cost_matrix);
+            // より良い解が見つかったら入れ替える
+            if (cost > nb_cost) {
+              // コストを更新
+              cost = nb_cost;
+              // 暫定解を更新
+              path = gen_2opt_nb(path, n, i, j);
+              find_flag = 1;  // 発見フラグを立てる
+              break;
+            }
+          }
+          if (i == n - 2 && find_flag == 0) {  // 最後まで入れ替えが起こらなかったら終了フラグを立てる
+            end_flag = 1;
+          }
+        }
+        // 入れ替えが起こらなかった場合ループを抜けて終了
+        if (end_flag) {
+          break;
+        }
       }
     }
   }
   // 結果
+  print_path(n, path);
   printf("result: cost = %d\n", cost);
   // メモリ開放
   free(path);
