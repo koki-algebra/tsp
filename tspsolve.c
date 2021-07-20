@@ -64,7 +64,7 @@ int* gen_random_path(int n) {
   for (int i = 0; i < n; i++) {
     do {
       flag = 0;  // フラグ初期化
-      rnd = (int)floor(genrand() * 51);  // 乱数生成
+      rnd = (int)floor(genrand() * n);  // 乱数生成
       // 乱数に重複がないか確認
       for (int j = 0; j < i; j++) {
         // 重複が見つかった場合
@@ -180,6 +180,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
 }
 
 /*  山登り法  */
+
 // pathのファイルへの書き込みを行う関数(m回目, 次元n)
 void hc_path_fprintf(int m, int n, int* path, int coordinate[n][2]) {
   char filename[128];
@@ -202,7 +203,8 @@ void hc_path_fprintf(int m, int n, int* path, int coordinate[n][2]) {
   fclose(fp);
 }
 
-void hc_cost_fprintf(int* costs) {  // 試行回数m, 次元n
+// 山登り法においてコストをファイルへ書き込む関数
+void hc_cost_fprintf(int* costs) {
   char filename[128];
   FILE *fp;
 
@@ -221,7 +223,7 @@ void hc_cost_fprintf(int* costs) {  // 試行回数m, 次元n
   fclose(fp);
 }
 
-// pathを引数に取り, path[i]とpath[j]を入れ替えた新しいnew_pathを返す関数
+// path[i]とpath[j]を入れ替えたnew_pathを返す関数
 int* gen_neighborhood(int* path, int n, int i, int j) {
   // メモリ確保
   int* new_path = (int*)malloc(sizeof(int) * n);
@@ -242,7 +244,14 @@ int* gen_neighborhood(int* path, int n, int i, int j) {
   return new_path;
 }
 
+// path[i]とpath[j]を両端として繋ぎ替えたnew_pathを返す関数
 int* gen_2opt_nb(int* path, int n, int i, int j) {
+  // i <= j でなければ交換
+  if (i > j) {
+    int tmp = i;
+    i = j;
+    j = tmp;
+  }
   // メモリ確保
   int* new_path = (int*)malloc(sizeof(int) * n);
   if (path == NULL) {
@@ -263,6 +272,7 @@ int* gen_2opt_nb(int* path, int n, int i, int j) {
   return new_path;
 }
 
+// 山登り法を実行する関数
 void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
   int nb_type;  // 0: ランダム交換, 1: 2-opt近傍
   int algo_type;  // 0: 通常, 1: 変種
@@ -283,10 +293,10 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
 
   // 通常 or 変種
   printf("input '0' or '1'\n");
-  printf("0: normal, 1: variant");
+  printf("0: normal, 1: variant\n");
   scanf("%d", &algo_type);
 
-  // 初期回を生成する
+  // 初期解を生成する
   sgenrand((unsigned)time(NULL));
   path = gen_random_path(n);
   cost = calc_cost(n, path, cost_matrix);
@@ -443,6 +453,145 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
   free(path);
 }
 
+
+/*  シミュレーテッド・アニーリング法  */
+
+// 温度減少関数
+double calc_tmp(double a, double T) {
+  // 温度減少率a (0 < a < 1), 温度T
+  return (1 - a) * T;
+}
+
+// 反復回数を変化させる関数(T0: 初期温度, T: 現在の温度, R0: 初期反復回数)
+int calc_length(double T0, double T, int R0) {
+  double min = 0.5;
+  double max = 1.5;
+  // b(0) = b(T0) = min, b(T0/2) = max となるように係数a, cを設定する
+  double a = 4 * (min - max) / (T0 * T0);
+  double c = max;
+  // b(T) = a(T - T0/2)^2 + c
+  double b = a * (T - (T0 / 2.0)) * (T - (T0 / 2.0)) + c;
+
+  return floor(b * R0);
+}
+
+// シミュレーテッド・アニーリング法を実行する関数
+void simulated_annealing(int n, int cost_matrix[n][n]) {
+  double T0;  // 初期温度
+  double T;  // 温度
+  int R0;  // 初期反復回数
+  int R;  // 反復回数
+  int D;  // 現在の解と近傍解のコストの差
+  double a;  // 温度減少率
+  double b;  // 温度Tに応じて反復回数を変化させる倍率b(T)
+  int* path = NULL;  // 暫定解
+  int* nb_path = NULL;  // 近傍解
+  int nb_type;  // 近傍のタイプ (0: ランダム交換, 1: 2-opt近傍)
+  int cost;  // 暫定解のコスト
+  int nb_cost;  // 近傍解のコスト
+  int end_flag = 0;
+
+  // 初期温度と初期反復回数を設定する
+  printf("input initial temperature\n");
+  scanf("%lf", &T0);
+  T = T0;
+  printf("input initial iteration count\n");
+  scanf("%d", &R0);
+  R = R0;
+
+  // 温度減少率と反復回数減少率を設定する
+  printf("input temperature reduction rate a (0 < a < 1)\n");
+  scanf("%lf", &a);
+
+  // 近傍の種類を選択する
+  printf("select neighborhood type '0' or '1'\n");
+  printf("0: random exchange, 1: 2-opt neighborhood\n");
+  scanf("%d", &nb_type);
+
+  // 初期解を生成する
+  sgenrand((unsigned)time(NULL));
+  path = gen_random_path(n);
+
+  // 終了条件を満たすまでループ
+  while (1) {
+    // R回探索
+    int count = 0;  // R回のうち, 交換が起きなかった数
+    for (int i = 0; i < R; i++) {
+      // R0回のうち8割交換が起きなかったら終了フラグを立てる
+      if (count > (R0 * 0.8)) {
+        printf("There was almost no exchange!\n");
+        end_flag = 1;
+        break;
+      }
+
+      // path[k]とpath[l]を使って近傍解を作る
+      int k, l;
+      k = (int)floor(genrand() * n);
+      // k != l にするためのバリデーション
+      while (1) {
+        l = (int)floor(genrand() * n);
+        if (k != l) {
+          break;
+        }
+      }
+      if (nb_type == 0) {  // ランダム交換
+        nb_path = gen_neighborhood(path, n, k, l);
+      } else {  // 2-opt近傍
+        nb_path = gen_2opt_nb(path, n, k, l);
+      }
+
+      // 暫定解と近傍解のコストを計算
+      cost = calc_cost(n, path, cost_matrix);
+      nb_cost = calc_cost(n, nb_path, cost_matrix);
+
+      // コストの差を計算
+      D = nb_cost - cost;
+
+      // Dを元に解を更新する(しない場合はcountを1増やす)
+      if (D <= 0) {
+        // 暫定解の更新
+        if (nb_type == 0) {  // ランダム交換
+          path = gen_neighborhood(path, n, k, l);
+        } else {  // 2-opt近傍
+          path = gen_2opt_nb(path, n, k, l);
+        }
+      } else {
+        // 確率exp(-D/T)で暫定解を更新する
+        if (exp( (double)(-D) / T ) >= genrand()) {
+          if (nb_type == 0) {  // ランダム交換
+            path = gen_neighborhood(path, n, k, l);
+          } else {  // 2-opt近傍
+            path = gen_2opt_nb(path, n, k, l);
+          }
+        } else {
+          count++;
+        }
+      }
+    }
+
+    // 温度更新
+    T = calc_tmp(a, T);
+    // 反復回数更新
+    R = calc_length(T0, T, R0);
+
+    // 温度が0に近ければ終了フラグを立てる
+    if (T < 0.01) {
+      printf("The temperature has dropped completely!\n");
+      end_flag = 1;
+    }
+
+    // 終了フラグが立っていたらループを抜ける
+    if (end_flag) {
+      break;
+    }
+  }
+
+  // 結果
+  printf("result: cost = %d\n", cost);
+
+  free(path);
+}
+
 int main(int argc, char *argv[]) {
   int n;          // 都市数
   int m;          // 試行回数
@@ -469,6 +618,9 @@ int main(int argc, char *argv[]) {
   } else if (strcmp(argv[2], "hc") == 0) {
     printf("hill climbing start!\n");
     type = 1;
+  } else if (strcmp(argv[2], "sa") == 0) {
+    printf("simulated annealing start!\n");
+    type = 2;
   }
 
   /* 次元(都市数)の取得 */
@@ -527,6 +679,9 @@ int main(int argc, char *argv[]) {
   } else if (type == 1) {
     // 山登り法
     hill_climbing(n, cost_matrix, coordinate);
+    // シミュレーテッド・アニーリング法
+  } else if (type == 2) {
+    simulated_annealing(n, cost_matrix);
   } else {
     printf("error: invalid argument!\n");
   }
