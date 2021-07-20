@@ -5,6 +5,8 @@
 #include <time.h>
 #include "tspsolve.h"
 
+#define COST_HISTORY_SIZE 256
+
 // 座標(x_i, y_i)と(x_j, y_j)のユークリッド距離を返す関数
 int d(int x_i, int y_i, int x_j, int y_j) {
   double distance = sqrt((x_i - x_j) * (x_i - x_j) + (y_i - y_j) * (y_i - y_j));
@@ -16,7 +18,7 @@ void print_cost(int n, int cost_matrix[n][n]) {
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
       printf("%d", cost_matrix[i][j]);
-      if (j == 50) {
+      if (j == 128) {
         printf("\n");
       } else {
         printf(" ");
@@ -106,7 +108,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   int cost[m];  // コスト
   int* path = NULL;
   int paths[m][n];
-  char filename[32];  // pathを書き込むファイル名
+  char filename[128];  // pathを書き込むファイル名
   FILE *fp;  // ファイルポインタ
   int interval = 300;
   int ans;  // 暫定解のコスト
@@ -178,6 +180,47 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
 }
 
 /*  山登り法  */
+// pathのファイルへの書き込みを行う関数(m回目, 次元n)
+void hc_path_fprintf(int m, int n, int* path, int coordinate[n][2]) {
+  char filename[128];
+  FILE *fp;
+
+  // pathの書き込み
+  sprintf(filename, "./path/hill-climbing/hill-climbing-%d.dat", m);
+  fp = fopen(filename, "w");
+  if (fp == NULL) {
+    printf("error: Failed to open file!\n");
+    exit(1);
+  }
+  for (int i = 0; i <= n; i++) {
+    if (i != n) {
+      fprintf(fp, "%d %d\n", coordinate[path[i]][0], coordinate[path[i]][1]);
+    } else {
+      fprintf(fp, "%d %d\n", coordinate[path[0]][0], coordinate[path[0]][1]);
+    }
+  }
+  fclose(fp);
+}
+
+void hc_cost_fprintf(int* costs) {  // 試行回数m, 次元n
+  char filename[128];
+  FILE *fp;
+
+  // costの書き込み
+  sprintf(filename, "./cost/hill-climbing/hill-climbing-cost.dat");
+  fp = fopen(filename, "w");
+  if (fp == NULL) {
+    printf("error: Failed to open file!\n");
+    exit(1);
+  }
+  for (int i = 0; i < COST_HISTORY_SIZE; i++) {
+    if (costs[i] != 0) {
+      fprintf(fp, "%d %d\n", i, costs[i]);
+    }
+  }
+  fclose(fp);
+}
+
 // pathを引数に取り, path[i]とpath[j]を入れ替えた新しいnew_pathを返す関数
 int* gen_neighborhood(int* path, int n, int i, int j) {
   // メモリ確保
@@ -220,17 +263,17 @@ int* gen_2opt_nb(int* path, int n, int i, int j) {
   return new_path;
 }
 
-void hill_climbing(int n, int cost_matrix[n][n]) {
+void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
   int nb_type;  // 0: ランダム交換, 1: 2-opt近傍
   int algo_type;  // 0: 通常, 1: 変種
   int end_flag = 0;  // 終了フラグ
-  int find_flag = 0;
-  int* path = NULL;
-  int* nb_path = NULL;
-  // int nb_paths[n*(n-1)/2][n];
-  int cost;  // 暫定解コスト
+  int find_flag = 0;  // 発見フラグ
+  int count = 0;  // whileループの回数
+  int* path = NULL;  // 暫定解
+  int* nb_path = NULL;  // 近傍解
+  int cost;  // 暫定解のコスト
+  int cost_history[COST_HISTORY_SIZE] = {0};  // 暫定解のコストの履歴
   int nb_cost;  // 近傍解のコスト
-  // int nb_costs[n*(n-1)/2];
   int ans_index[2];
 
   // ランダム交換 or 2opt-近傍
@@ -247,12 +290,15 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
   sgenrand((unsigned)time(NULL));
   path = gen_random_path(n);
   cost = calc_cost(n, path, cost_matrix);
-
+  cost_history[0] = cost;
 
   if (nb_type == 0) {  // ランダム交換
     if (algo_type == 0) {  // 通常
       while (1) {
         find_flag = 0;
+        count++;
+        // 暫定解をファイルへ書き込む
+        hc_path_fprintf(count, n, path, coordinate);
         // 現在の解の近傍の中から，最も良い解を選び近傍解とする
         for (int i = 0; i < n - 1; i++) {
           for (int j = i + 1; j < n; j++) {
@@ -275,13 +321,18 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
         if (end_flag) {
           break;
         }
-        // 暫定解更新
+        // 暫定解を更新
         path = gen_neighborhood(path, n, ans_index[0], ans_index[1]);
+        // 履歴へ追加
+        cost_history[count] = cost;
       }
     } else {  // 変種
       // 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
       while (1) {
         find_flag = 0;
+        count++;
+        // 暫定解をファイルへ書き込む
+        hc_path_fprintf(count, n, path, coordinate);
         // 近傍解を探索する
         for (int i = 0; i < n - 1; i++) {
           if (find_flag) {
@@ -310,12 +361,17 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
         if (end_flag) {
           break;
         }
+        // 履歴へ追加
+        cost_history[count] = cost;
       }
     }
   } else {  // 2-opt近傍
     if (algo_type == 0) {  // 通常
       while (1) {
         find_flag = 0;
+        count++;
+        // 暫定解をファイルへ書き込む
+        hc_path_fprintf(count, n, path, coordinate);
         // 現在の解の近傍の中から，最も良い解を選び近傍解とする
         for (int i = 0; i < n - 1; i++) {
           for (int j = i + 1; j < n; j++) {
@@ -338,11 +394,17 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
         if (end_flag) {
           break;
         }
+        // 暫定解を更新
         path = gen_2opt_nb(path, n, ans_index[0], ans_index[1]);
+        // 履歴へ追加
+        cost_history[count] = cost;
       }
     } else {  // 変種
       while (1) {
         find_flag = 0;
+        count++;
+        // 暫定解をファイルへ書き込む
+        hc_path_fprintf(count, n, path, coordinate);
         // 近傍を探索する
         for (int i = 0; i < n - 1; i++) {
           if (find_flag) {
@@ -369,12 +431,14 @@ void hill_climbing(int n, int cost_matrix[n][n]) {
         if (end_flag) {
           break;
         }
+        // 履歴へ追加
+        cost_history[count] = cost;
       }
     }
   }
-  // 結果
-  print_path(n, path);
-  printf("result: cost = %d\n", cost);
+
+  // コストの履歴をファイルへ書き込む
+  hc_cost_fprintf(cost_history);
   // メモリ開放
   free(path);
 }
@@ -462,7 +526,7 @@ int main(int argc, char *argv[]) {
     random_search(n, coordinate, cost_matrix);
   } else if (type == 1) {
     // 山登り法
-    hill_climbing(n, cost_matrix);
+    hill_climbing(n, cost_matrix, coordinate);
   } else {
     printf("error: invalid argument!\n");
   }
