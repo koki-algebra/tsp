@@ -124,6 +124,9 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n], char* pro
   int ans;  // 暫定解のコスト
   int ans_index = 0;   // 暫定解のindex
   int ans_indexes[m];  // 暫定解のindexの推移を格納する配列
+  double t1, t2;
+
+  t1 = getrusage_sec();  // start measurement
 
   // 乱数シード初期化
   sgenrand((unsigned)time(NULL));
@@ -148,6 +151,8 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n], char* pro
     }
   }
 
+  t2 = getrusage_sec();  // end of measurement
+
   // ファイルへの書き込み(cost)
   sprintf(filename, "./cost/random/random-cost.dat");
   fp = fopen(filename, "w");
@@ -158,6 +163,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n], char* pro
   fprintf(fp, "# 問題 : %s\n", prob);
   fprintf(fp, "# 解法 : random\n");
   fprintf(fp, "# 反復回数 : %d\n", m);
+  fprintf(fp, "# 実行時間 : %10.70f\n", t2 - t1);
   for (int i = 0; i < m; i++) {
     if (i == 0 || (i + 1) % 10 == 0) {
       fprintf(fp, "%d %d\n", i + 1, cost[ans_indexes[i]]);
@@ -181,6 +187,7 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n], char* pro
       fprintf(fp, "# 反復回数 : %d\n", m);
       fprintf(fp, "# 累積反復回数 : %d\n", i + 1);
       fprintf(fp, "# 暫定解のコスト : %d\n", cost[ans_indexes[i]]);
+      fprintf(fp, "# 実行時間 : %10.70f\n", t2 - t1);
       for (int j = 0; j <= n; j++) {
         if (j != n) {
           int x = coordinate[paths[ans_indexes[i]][j]][0];
@@ -316,6 +323,7 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2], char* pro
   int cost_history[COST_HISTORY_SIZE] = {0};  // 暫定解のコストの履歴
   int nb_cost;  // 近傍解のコスト
   int ans_index[2];
+  double t1, t2;
 
   // ランダム交換 or 2opt-近傍
   printf("input '0' or '1'\n");
@@ -326,6 +334,8 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2], char* pro
   printf("select neighborhood type '0' or '1'\n");
   printf("0: normal, 1: variant\n");
   scanf("%d", &algo_type);
+
+  t1 = getrusage_sec();  // start measurement
 
   // 初期解を生成する
   sgenrand((unsigned)time(NULL));
@@ -480,8 +490,13 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2], char* pro
 
   // コストの履歴をファイルへ書き込む
   hc_cost_fprintf(cost_history);
+
+  t2 = getrusage_sec();  // end of measurement
+
+  // 結果
   printf("result: cost = %d\n", cost);
   printf("count = %d\n", count);
+  printf("time = %10.70f\n", t2 - t1);
   // メモリ開放
   free(path);
 }
@@ -522,6 +537,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
   int end_flag = 0;
   FILE *fp;
   char filename[128];
+  double t1, t2;
 
   // 初期温度と初期反復回数を設定する
   printf("input initial temperature\n");
@@ -539,6 +555,8 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
   printf("select neighborhood type '0' or '1'\n");
   printf("0: random exchange, 1: 2-opt neighborhood\n");
   scanf("%d", &nb_type);
+
+  t1 = getrusage_sec();  // start measurement
 
   // 初期解を生成する
   sgenrand((unsigned)time(NULL));
@@ -617,6 +635,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
 
     // 終了フラグが立っていたらファイルにpathを書き込んでループを抜ける
     if (end_flag) {
+      t2 = getrusage_sec();  // end of measurement
       // ファイルへの書き込み(コメント部分)
       sprintf(filename, "./path/SA/sa-path.dat");
       fp = fopen(filename, "w");
@@ -637,6 +656,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
       fprintf(fp, "# 反復回数減少率 : β(T) = 上に凸の二次関数(T = T0/2 で最大値)\n");
       fprintf(fp, "# 累積反復回数 : %d\n", R_sum);
       fprintf(fp, "# 収束解のコスト: %d\n", cost);
+      fprintf(fp, "# 実行時間 : %10.70f\n", t2 - t1);
       // 座標の書き込み
       for (int j = 0; j <= n; j++) {
         if (j != n) {
