@@ -4,8 +4,18 @@
 #include <math.h>
 #include <time.h>
 #include "tspsolve.h"
+#include <sys/resource.h>
 
 #define COST_HISTORY_SIZE 256
+
+// 時間計測に必要な関数
+double getrusage_sec() {
+  struct rusage t;
+  struct timeval tv;
+  getrusage(RUSAGE_SELF, &t);
+  tv = t.ru_utime;
+  return tv.tv_sec + (double)tv.tv_usec*1e-6;
+}
 
 // 座標(x_i, y_i)と(x_j, y_j)のユークリッド距離を返す関数
 int d(int x_i, int y_i, int x_j, int y_j) {
@@ -99,7 +109,7 @@ int calc_cost(int n, int* path, int cost_matrix[n][n]) {
 }
 
 // ランダム探索を実行する関数
-void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
+void random_search(int n, int coordinate[n][2], int cost_matrix[n][n], char* prob) {
   // 試行回数入力
   int m;
   printf("ランダム探索試行回数: ");
@@ -139,12 +149,15 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
   }
 
   // ファイルへの書き込み(cost)
-  sprintf(filename, "./cost/random/random-cost-%d.dat", m);
+  sprintf(filename, "./cost/random/random-cost.dat");
   fp = fopen(filename, "w");
   if (fp == NULL) {
     printf("error: Failed to open file!\n");
     exit(1);
   }
+  fprintf(fp, "# 問題 : %s\n", prob);
+  fprintf(fp, "# 解法 : random\n");
+  fprintf(fp, "# 反復回数 : %d\n", m);
   for (int i = 0; i < m; i++) {
     if (i == 0 || (i + 1) % 10 == 0) {
       fprintf(fp, "%d %d\n", i + 1, cost[ans_indexes[i]]);
@@ -154,15 +167,20 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
 
   // ファイルへの書き込み(path)
   for (int i = 0; i < m; i++) {
-    // 初回以降は100の倍数回目に書き込む
+    // 一定間隔でファイルに書き込む
     if (i == 0 || (i + 1) % interval == 0) {
       // ファイルへの書き込み
-      sprintf(filename, "./path/random/random-%d.dat", i+1);
+      sprintf(filename, "./path/random/random-%d.dat", i + 1);
       fp = fopen(filename, "w");
       if (fp == NULL) {
         printf("error: Failed to open file!\n");
         exit(1);
       }
+      fprintf(fp, "# 問題 : %s\n", prob);
+      fprintf(fp, "# 解法 : random\n");
+      fprintf(fp, "# 反復回数 : %d\n", m);
+      fprintf(fp, "# 累積反復回数 : %d\n", i + 1);
+      fprintf(fp, "# 暫定解のコスト : %d\n", cost[ans_indexes[i]]);
       for (int j = 0; j <= n; j++) {
         if (j != n) {
           int x = coordinate[paths[ans_indexes[i]][j]][0];
@@ -177,12 +195,13 @@ void random_search(int n, int coordinate[n][2], int cost_matrix[n][n]) {
       fclose(fp);
     }
   }
+  printf("result: cost = %d\n", cost[ans_indexes[m - 1]]);
 }
 
 /*  山登り法  */
 
 // pathのファイルへの書き込みを行う関数(m回目, 次元n)
-void hc_path_fprintf(int m, int n, int* path, int coordinate[n][2]) {
+void hc_path_fprintf(int m, int n, int* path, int coordinate[n][2], char* prob, int nb_type, int algo_type) {
   char filename[128];
   FILE *fp;
 
@@ -193,6 +212,18 @@ void hc_path_fprintf(int m, int n, int* path, int coordinate[n][2]) {
     printf("error: Failed to open file!\n");
     exit(1);
   }
+  fprintf(fp, "# 問題 : %s\n", prob);
+  if (algo_type == 0) {
+    fprintf(fp, "# 解法 : normal hill-climbing\n");
+  } else if (algo_type == 1) {
+    fprintf(fp, "# 解法 : variant hill-climbing\n");
+  }
+  if (nb_type == 0) {
+    fprintf(fp, "# 近傍 : ランダム交換\n");
+  } else if (nb_type == 1) {
+    fprintf(fp, "# 近傍 : 2-opt\n");
+  }
+  fprintf(fp, "# 累積反復回数 : %d\n", m);
   for (int i = 0; i <= n; i++) {
     if (i != n) {
       fprintf(fp, "%d %d\n", coordinate[path[i]][0], coordinate[path[i]][1]);
@@ -273,7 +304,7 @@ int* gen_2opt_nb(int* path, int n, int i, int j) {
 }
 
 // 山登り法を実行する関数
-void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
+void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2], char* prob) {
   int nb_type;  // 0: ランダム交換, 1: 2-opt近傍
   int algo_type;  // 0: 通常, 1: 変種
   int end_flag = 0;  // 終了フラグ
@@ -306,9 +337,12 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
     if (algo_type == 0) {  // 通常
       while (1) {
         find_flag = 0;
-        count++;
         // 暫定解をファイルへ書き込む
-        hc_path_fprintf(count, n, path, coordinate);
+        hc_path_fprintf(count, n, path, coordinate, prob, nb_type, algo_type);
+        // 終了フラグが立っていればループを抜けて終了
+        if (end_flag) {
+          break;
+        }
         // 現在の解の近傍の中から，最も良い解を選び近傍解とする
         for (int i = 0; i < n - 1; i++) {
           for (int j = i + 1; j < n; j++) {
@@ -327,22 +361,22 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
             end_flag = 1;
           }
         }
-        // 終了フラグが立っていればループを抜けて終了
-        if (end_flag) {
-          break;
-        }
         // 暫定解を更新
         path = gen_neighborhood(path, n, ans_index[0], ans_index[1]);
         // 履歴へ追加
+        count++;
         cost_history[count] = cost;
       }
     } else {  // 変種
       // 現在の解の近傍の中から，現在の解よりも良い解が見つかれば其れを近傍解とし，現在の解と近傍解を入れ替える
       while (1) {
         find_flag = 0;
-        count++;
         // 暫定解をファイルへ書き込む
-        hc_path_fprintf(count, n, path, coordinate);
+        hc_path_fprintf(count, n, path, coordinate, prob, nb_type, algo_type);
+        // 入れ替えが起こらなかった場合ループを抜けて終了
+        if (end_flag) {
+          break;
+        }
         // 近傍解を探索する
         for (int i = 0; i < n - 1; i++) {
           if (find_flag) {
@@ -367,11 +401,8 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
             end_flag = 1;
           }
         }
-        // 入れ替えが起こらなかった場合ループを抜けて終了
-        if (end_flag) {
-          break;
-        }
         // 履歴へ追加
+        count++;
         cost_history[count] = cost;
       }
     }
@@ -379,9 +410,12 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
     if (algo_type == 0) {  // 通常
       while (1) {
         find_flag = 0;
-        count++;
         // 暫定解をファイルへ書き込む
-        hc_path_fprintf(count, n, path, coordinate);
+        hc_path_fprintf(count, n, path, coordinate, prob, nb_type, algo_type);
+        // 終了フラグが立っていればループを抜けて終了
+        if (end_flag) {
+          break;
+        }
         // 現在の解の近傍の中から，最も良い解を選び近傍解とする
         for (int i = 0; i < n - 1; i++) {
           for (int j = i + 1; j < n; j++) {
@@ -400,21 +434,21 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
             end_flag = 1;
           }
         }
-        // 終了フラグが立っていればループを抜けて終了
-        if (end_flag) {
-          break;
-        }
         // 暫定解を更新
         path = gen_2opt_nb(path, n, ans_index[0], ans_index[1]);
         // 履歴へ追加
+        count++;
         cost_history[count] = cost;
       }
     } else {  // 変種
       while (1) {
         find_flag = 0;
-        count++;
         // 暫定解をファイルへ書き込む
-        hc_path_fprintf(count, n, path, coordinate);
+        hc_path_fprintf(count, n, path, coordinate, prob, nb_type, algo_type);
+        // 入れ替えが起こらなかった場合ループを抜けて終了
+        if (end_flag) {
+          break;
+        }
         // 近傍を探索する
         for (int i = 0; i < n - 1; i++) {
           if (find_flag) {
@@ -437,11 +471,8 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
             end_flag = 1;
           }
         }
-        // 入れ替えが起こらなかった場合ループを抜けて終了
-        if (end_flag) {
-          break;
-        }
         // 履歴へ追加
+        count++;
         cost_history[count] = cost;
       }
     }
@@ -466,15 +497,11 @@ double calc_tmp(double a, double T) {
 
 // 反復回数を変化させる関数(T0: 初期温度, T: 現在の温度, R0: 初期反復回数)
 int calc_length(double T0, double T, int R0) {
-  double min = 0.5;
-  double max = 1.5;
-  // b(0) = b(T0) = min, b(T0/2) = max となるように係数a, cを設定する
+  double max = 2.0 * R0;
+  double min = R0;
   double a = 4 * (min - max) / (T0 * T0);
-  double c = max;
-  // b(T) = a(T - T0/2)^2 + c
-  double b = a * (T - (T0 / 2.0)) * (T - (T0 / 2.0)) + c;
-
-  return floor(b * R0);
+  double R = a * (T - T0 / 2) * (T - T0 / 2) + max;
+  return (int)floor(R);
 }
 
 // シミュレーテッド・アニーリング法を実行する関数
@@ -522,8 +549,8 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
     // R回探索
     int count = 0;  // R回のうち, 交換が起きなかった数
     for (int i = 0; i < R; i++) {
-      // R0回のうち8割交換が起きなかったら終了フラグを立てる
-      if (count > (R0 * 0.9)) {
+      // R回のうちほとんど交換が起こらなかった場合終了フラグを立てる
+      if (count > (R * 0.999)) {
         printf("There was almost no exchange!\n");
         end_flag = 1;
         break;
@@ -574,7 +601,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
       }
 
       // 反復回数の合計に加算
-      R_sum += R;
+      R_sum++;
     }
 
     // 温度更新
@@ -583,7 +610,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
     R = calc_length(T0, T, R0);
 
     // 温度が0に近ければ終了フラグを立てる
-    if (T < 0.01) {
+    if (T < 0.1) {
       printf("The temperature has dropped completely!\n");
       end_flag = 1;
     }
@@ -598,7 +625,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
         exit(1);
       }
       fprintf(fp, "# 問題 : %s\n", prob);
-      fprintf(fp, "# 解放 : simulated-annealing\n");
+      fprintf(fp, "# 解法 : simulated-annealing\n");
       if (nb_type == 0) {
         fprintf(fp, "# 近傍 : ランダム交換\n");
       } else if (nb_type == 1) {
@@ -609,6 +636,7 @@ void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], cha
       fprintf(fp, "# 温度減少率(α) : %lf\n", a);
       fprintf(fp, "# 反復回数減少率 : β(T) = 上に凸の二次関数(T = T0/2 で最大値)\n");
       fprintf(fp, "# 累積反復回数 : %d\n", R_sum);
+      fprintf(fp, "# 収束解のコスト: %d\n", cost);
       // 座標の書き込み
       for (int j = 0; j <= n; j++) {
         if (j != n) {
@@ -635,7 +663,7 @@ int main(int argc, char *argv[]) {
   int m;          // 試行回数
   FILE *fp;       // ファイルポインター
   char temp[100];
-  int type = 1;
+  int type = 1;  // アルゴリズム(0: rs, 1: hc, 2: sa )
 
   // 引数の過不足に対するエラー処理
   if (argc != 3) {
@@ -713,16 +741,17 @@ int main(int argc, char *argv[]) {
 
   if (type == 0) {
     // ランダム探索
-    random_search(n, coordinate, cost_matrix);
+    random_search(n, coordinate, cost_matrix, argv[1]);
   } else if (type == 1) {
     // 山登り法
-    hill_climbing(n, cost_matrix, coordinate);
+    hill_climbing(n, cost_matrix, coordinate, argv[1]);
     // シミュレーテッド・アニーリング法
   } else if (type == 2) {
     simulated_annealing(n, cost_matrix, coordinate, argv[1]);
   } else {
     printf("error: invalid argument!\n");
   }
+
 
   // 最後にファイルを閉じる
   fclose(fp);
