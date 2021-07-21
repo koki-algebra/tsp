@@ -292,7 +292,7 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
   scanf("%d", &nb_type);
 
   // 通常 or 変種
-  printf("input '0' or '1'\n");
+  printf("select neighborhood type '0' or '1'\n");
   printf("0: normal, 1: variant\n");
   scanf("%d", &algo_type);
 
@@ -449,6 +449,8 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
 
   // コストの履歴をファイルへ書き込む
   hc_cost_fprintf(cost_history);
+  printf("result: cost = %d\n", cost);
+  printf("count = %d\n", count);
   // メモリ開放
   free(path);
 }
@@ -459,7 +461,7 @@ void hill_climbing(int n, int cost_matrix[n][n], int coordinate[n][2]) {
 // 温度減少関数
 double calc_tmp(double a, double T) {
   // 温度減少率a (0 < a < 1), 温度T
-  return (1 - a) * T;
+  return a * T;
 }
 
 // 反復回数を変化させる関数(T0: 初期温度, T: 現在の温度, R0: 初期反復回数)
@@ -476,11 +478,12 @@ int calc_length(double T0, double T, int R0) {
 }
 
 // シミュレーテッド・アニーリング法を実行する関数
-void simulated_annealing(int n, int cost_matrix[n][n]) {
+void simulated_annealing(int n, int cost_matrix[n][n], int coordinate[n][2], char* prob) {
   double T0;  // 初期温度
   double T;  // 温度
   int R0;  // 初期反復回数
   int R;  // 反復回数
+  int R_sum = 0;  // 累積反復回数
   int D;  // 現在の解と近傍解のコストの差
   double a;  // 温度減少率
   double b;  // 温度Tに応じて反復回数を変化させる倍率b(T)
@@ -490,6 +493,8 @@ void simulated_annealing(int n, int cost_matrix[n][n]) {
   int cost;  // 暫定解のコスト
   int nb_cost;  // 近傍解のコスト
   int end_flag = 0;
+  FILE *fp;
+  char filename[128];
 
   // 初期温度と初期反復回数を設定する
   printf("input initial temperature\n");
@@ -518,7 +523,7 @@ void simulated_annealing(int n, int cost_matrix[n][n]) {
     int count = 0;  // R回のうち, 交換が起きなかった数
     for (int i = 0; i < R; i++) {
       // R0回のうち8割交換が起きなかったら終了フラグを立てる
-      if (count > (R0 * 0.8)) {
+      if (count > (R0 * 0.9)) {
         printf("There was almost no exchange!\n");
         end_flag = 1;
         break;
@@ -567,6 +572,9 @@ void simulated_annealing(int n, int cost_matrix[n][n]) {
           count++;
         }
       }
+
+      // 反復回数の合計に加算
+      R_sum += R;
     }
 
     // 温度更新
@@ -580,14 +588,44 @@ void simulated_annealing(int n, int cost_matrix[n][n]) {
       end_flag = 1;
     }
 
-    // 終了フラグが立っていたらループを抜ける
+    // 終了フラグが立っていたらファイルにpathを書き込んでループを抜ける
     if (end_flag) {
+      // ファイルへの書き込み(コメント部分)
+      sprintf(filename, "./path/SA/sa-path.dat");
+      fp = fopen(filename, "w");
+      if (fp == NULL) {
+        printf("error: Failed to open file!\n");
+        exit(1);
+      }
+      fprintf(fp, "# 問題 : %s\n", prob);
+      fprintf(fp, "# 解放 : simulated-annealing\n");
+      if (nb_type == 0) {
+        fprintf(fp, "# 近傍 : ランダム交換\n");
+      } else if (nb_type == 1) {
+        fprintf(fp, "# 近傍 : 2-opt\n");
+      }
+      fprintf(fp, "# 初期温度 : %lf\n", T0);
+      fprintf(fp, "# 初期反復回数 : %d\n", R0);
+      fprintf(fp, "# 温度減少率(α) : %lf\n", a);
+      fprintf(fp, "# 反復回数減少率 : β(T) = 上に凸の二次関数(T = T0/2 で最大値)\n");
+      fprintf(fp, "# 累積反復回数 : %d\n", R_sum);
+      // 座標の書き込み
+      for (int j = 0; j <= n; j++) {
+        if (j != n) {
+          fprintf(fp, "%d %d\n", coordinate[path[j]][0], coordinate[path[j]][1]);
+        } else {
+          fprintf(fp, "%d %d\n", coordinate[path[0]][0], coordinate[path[0]][1]);
+        }
+      }
+      fclose(fp);
       break;
     }
   }
 
   // 結果
   printf("result: cost = %d\n", cost);
+  printf("T = %lf\n", T);
+  printf("R_sum = %d\n", R_sum);
 
   free(path);
 }
@@ -681,7 +719,7 @@ int main(int argc, char *argv[]) {
     hill_climbing(n, cost_matrix, coordinate);
     // シミュレーテッド・アニーリング法
   } else if (type == 2) {
-    simulated_annealing(n, cost_matrix);
+    simulated_annealing(n, cost_matrix, coordinate, argv[1]);
   } else {
     printf("error: invalid argument!\n");
   }
